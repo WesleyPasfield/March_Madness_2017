@@ -6,7 +6,8 @@
 ## This will pull all years between year start & year end
 ## Min Year is 2002, max is 2017
 ## ex - kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017')
-print('hello world')
+year_start <- 2002
+year_end <- 2017
 kenpom_scrape <- function( year_start, year_end, location ) {
   
   if( year_start < 2002 ) stop('First Available year is 2002')
@@ -22,21 +23,21 @@ kenpom_scrape <- function( year_start, year_end, location ) {
   years <- seq(year_start, year_end, 1)
   urlList <- list()
   a <- 0
-
-  ## Get URL using base KenPom site parameter & year for all requested years
-
-    for (y in years) {
+  
+  ## Loop through years on KenPom site
+  
+  for (y in years) {
     a <- a + 1
-    siteURL <- read_html(paste0('http://kenpom.com/index.php?y=',year_start[a]))
+    siteURL <- read_html(paste0('http://kenpom.com/index.php?y=',years[a]))
     urlList[[a]] <- siteURL
   }
-
-  ## Create empty list for storing each year
+  
+    ## Create empty list for storing each year
   
   yearList <- list()
   
   ## Loop through each year & pull all relevant data for each team in each year
-  
+
   for (c in 1:length(years))  { 
     
     ## Pull relevant information from KenPom.com. Used selectorgadget to obtain information
@@ -74,6 +75,8 @@ kenpom_scrape <- function( year_start, year_end, location ) {
     yearList[[c]] <- kenpom2
   }
   
+  head(yearList[[9]])
+  
   ## Stack all years into one dataframe
   
   kenpomAll <- do.call(rbind.data.frame, yearList) 
@@ -89,3 +92,5 @@ kenpom_scrape <- function( year_start, year_end, location ) {
 
 kenpom_All <- kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017')
 head(kenpom_All)
+
+filter(kenpomAll, Team == 'Kentucky')
