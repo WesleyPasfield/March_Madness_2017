@@ -6,8 +6,7 @@
 ## This will pull all years between year start & year end
 ## Min Year is 2002, max is 2017
 ## ex - kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017')
-year_start <- 2002
-year_end <- 2017
+
 kenpom_scrape <- function( year_start, year_end, location ) {
   
   if( year_start < 2002 ) stop('First Available year is 2002')
@@ -93,4 +92,3 @@ kenpom_scrape <- function( year_start, year_end, location ) {
 kenpom_All <- kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017')
 head(kenpom_All)
 
-filter(kenpomAll, Team == 'Kentucky')
