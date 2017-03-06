@@ -223,7 +223,7 @@ watchlist <- list(train=dtrain, test=dtest)
 xgbD <- xgboost(data = dtrain,
                eta = 0.045,
                max_depth = 6, 
-               nround=250, 
+               nround=500, 
                subsample = 0.5,
                colsample_bytree = 0.5,
                eval.metric = "error",
@@ -241,6 +241,7 @@ importance
 
 ## Create predictions
 
+predsTrain <- predict(xgbD, dtrain)
 predsTest <- predict(xgbD, dtest)
 predsTourn <- predict(xgbD, dTtest)
 
@@ -290,6 +291,7 @@ confTourn
 logmodel <- glm(outcome ~.,family=binomial(link='logit'),data=modelRegTrain)
 logmodel$coefficients
 
+logPredsTrain <- predict(logmodel, modelRegTrain, type = 'response')
 logPredsTest <- predict(logmodel, modelRegTest, type = 'response')
 logPredsTourn <- predict(logmodel, modelTourn, type = 'response')
 
@@ -310,6 +312,8 @@ rfM <- randomForest(as.factor(outcome) ~., data = modelRegTrain,
 rfM$importance
 rfM$err.rate
 
+predsRFTrain <- predict(rfM, modelRegTrain, type = 'prob')
+
 predsRF <- predict(rfM, modelRegTest,type = 'prob')
 errorfunc(predsRF[,2], outcomeTest)
 LogLoss(predsRF[,2], outcomeTest)
@@ -318,16 +322,180 @@ predsRFTourn <- predict(rfM, modelTourn, type = 'prob')
 errorfunc(predsRFTourn[,2], outcomeTourney)
 LogLoss(predsRFTourn[,2], outcomeTourney)
 
+## Adaboost
+
+library(fastAdaboost)
+adaM <- adaboost(outcome ~., data=modelRegTrain ,10)
+
+adaPredTrain <- predict(adaM, modelRegTrain)
+adaPredTrain <- adaPredTrain$prob
+adaPredTest <- predict(adaM, modelRegTest)
+adaPredTest <- adaPredTest$prob
+
+adaPredTourn <- predict(adaM, modelTourn)
+adaPredTourn <- adaPredTourn$prob
+
+errorfunc(adaPredTest[,2], outcomeTest)
+LogLoss(adaPredTest[,2], outcomeTest)
+
+errorfunc(adaPredTourn[,2], outcomeTourney)
+LogLoss(adaPredTourn[,2], outcomeTourney)
+
+## XGBoost w/o standardized vals
+
+## Cut down to just modeled variables
+
+modelRegTrainD <- modelRegTrainFull %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D, outcome) 
+
+modelRegTestD <- modelRegTestFull %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D, outcome) 
+
+modelTournD <- modelTournFull %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D, outcome) 
+
+sparseTrainD <- sparse.model.matrix(outcome  ~.-1 , data=modelRegTrainD)
+sparseTestD <- sparse.model.matrix(outcome ~.-1, data=modelRegTestD)
+sparseTTestD <- sparse.model.matrix(outcome ~.-1, data=modelTournD)
+dtrainD <- xgb.DMatrix(data = sparseTrainD, label = outcomeTrain)
+dtestD <- xgb.DMatrix(data = sparseTestD, label = outcomeTest)
+dTtestD <- xgb.DMatrix(data = sparseTTestD, label = outcomeTourney)
+
+
+xgbDD <- xgboost(data = dtrainD,
+                eta = 0.045,
+                max_depth = 6, 
+                nround=250, 
+                subsample = 0.5,
+                colsample_bytree = 0.5,
+                eval.metric = "error",
+                eval.metric = 'auc',
+                eval_metric = "logloss",
+                objective = "binary:logistic",
+                nthread = 3,
+                watchlist = watchlist
+)
+
+## Create predictions
+
+predsTrainD <- predict(xgbDD, dtrainD)
+predsTestD <- predict(xgbDD, dtestD)
+predsTournD <- predict(xgbDD, dTtestD)
+
+errorfunc(predsTestD, outcomeTest)
+LogLoss(predsTournD, outcomeTourney)
+
+
 ## Ensemble
 
-PredsAvg <- (predsTest + logPredsTest + predsRF[,2]) / 3
-PredsTournAvg <- (predsTourn + logPredsTourn + predsRFTourn[,2]) / 3
+## Simple Avgs
+
+PredsAvg <- (predsTest + logPredsTest + predsRF[,2] + adaPredTest[,2] + predsTestD) / 5
+PredsTournAvg <- (predsTourn + logPredsTourn + predsRFTourn[,2] + adaPredTourn[,2] + predsTournD) / 5
 
 errorfunc(PredsAvg, outcomeTest)
 LogLoss(PredsAvg, outcomeTest)
 
 errorfunc(PredsTournAvg, outcomeTourney)
 LogLoss(PredsTournAvg, outcomeTourney)
+
+## Ensemble XGB
+
+## Predictions as Inputs
+
+PredsTAvg <- as.data.frame(cbind(predsTrain,cbind(predsTrainD,cbind(logPredsTrain,cbind(predsRFTrain[,2],cbind(adaPredTrain[,2], outcomeTrain))))))
+PredsTeAvg <- as.data.frame(cbind(predsTest,cbind(predsTestD,cbind(logPredsTest,cbind(predsRF[,2],cbind(adaPredTest[,2], outcomeTest))))))
+PredsToAvg <- as.data.frame(cbind(predsTourn,cbind(predsTournD,cbind(logPredsTourn,cbind(predsRFTourn[,2],cbind(adaPredTourn[,2], outcomeTourney))))))
+
+## Just Log & XGB
+
+PredsTAvgT <- PredsTAvg[,c(1:3,6)]
+PredsTeAvgT <- PredsTeAvg[,c(1:3,6)]
+PredsToAvgT <- PredsToAvg[,c(1:3,6)]
+
+## Just XGB
+
+PredsTAvgX <- PredsTAvg[,c(1:2,6)]
+PredsTeAvgX <- PredsTeAvg[,c(1:2,6)]
+PredsToAvgX <- PredsToAvg[,c(1:2,6)]
+
+## Create Matrices
+
+sparseTrainEns <- sparse.model.matrix(outcomeTrain  ~.-1 , data=PredsTAvgT)
+sparseTestEns <- sparse.model.matrix(outcomeTest  ~.-1 , data=PredsTeAvgT)
+sparseTournEns <- sparse.model.matrix(outcomeTourney  ~.-1 , data=PredsToAvgT)
+sparseTrainEnsX <- sparse.model.matrix(outcomeTrain  ~.-1 , data=PredsTAvgX)
+sparseTestEnsX <- sparse.model.matrix(outcomeTest  ~.-1 , data=PredsTeAvgX)
+sparseTournEnsX <- sparse.model.matrix(outcomeTourney  ~.-1 , data=PredsToAvgX)
+dtrainEns <- xgb.DMatrix(data = sparseTrainEns, label = outcomeTrain)
+dtestEns <- xgb.DMatrix(data = sparseTestEns, label = outcomeTest)
+dtournEns <- xgb.DMatrix(data = sparseTournEns, label = outcomeTourney)
+dtrainEnsX <- xgb.DMatrix(data = sparseTrainEnsX, label = outcomeTrain)
+dtestEnsX <- xgb.DMatrix(data = sparseTestEnsX, label = outcomeTest)
+dtournEnsX <- xgb.DMatrix(data = sparseTournEnsX, label = outcomeTourney)
+
+## Log + XGB model
+
+xgbDEns <- xgboost(data = dtrainEns,
+                 eta = 0.01,
+                 max_depth = 3, 
+                 nround=500, 
+                 subsample = 0.5,
+                 colsample_bytree = 0.5,
+                 eval.metric = "error",
+                 eval.metric = 'auc',
+                 eval_metric = "logloss",
+                 objective = "binary:logistic",
+                 nthread = 3,
+                 watchlist = watchlist
+)
+
+importanceE <- xgb.importance(feature_names = colnames(sparseTrainEns), model = xgbDEns)
+importanceE
+
+## Predictions
+
+ensTest <- predict(xgbDEns, dtestEns)
+ensTourn <- predict(xgbDEns, dtournEns)
+
+errorfunc(ensTest, outcomeTest)
+LogLoss(ensTest, outcomeTest)
+
+errorfunc(ensTourn, outcomeTourney)
+LogLoss(ensTourn, outcomeTourney)
+
+## XGB only model
+
+xgbDEnsX <- xgboost(data = dtrainEnsX,
+                   eta = 0.01,
+                   max_depth = 3, 
+                   nround=500, 
+                   subsample = 0.5,
+                   colsample_bytree = 0.5,
+                   eval.metric = "error",
+                   eval.metric = 'auc',
+                   eval_metric = "logloss",
+                   objective = "binary:logistic",
+                   nthread = 3,
+                   watchlist = watchlist
+)
+
+importanceEX <- xgb.importance(feature_names = colnames(sparseTrainEnsX), model = xgbDEnsX)
+importanceEX
+
+## Predictions
+
+ensTestX <- predict(xgbDEnsX, dtestEnsX)
+ensTournX <- predict(xgbDEnsX, dtournEnsX)
+
+errorfunc(ensTestX, outcomeTest)
+LogLoss(ensTestX, outcomeTest)
+
+errorfunc(ensTourn, outcomeTourney)
+LogLoss(ensTourn, outcomeTourney)
 
 ## New Data Predictions
 
@@ -381,45 +549,69 @@ newPredsFormat <- function(predsDF) {
            three_pt_Z = (three_pt_D - three_pt_mean) / three_pt_sd,
            to_perc_Z = (to_perc_D - to_perc_mean) / to_perc_sd,
            ft_perc_Z = (ft_perc_D - ft_perc_mean) / ft_perc_sd,
-          dummy_outcome = 1) %>%
-    select(id, Season, team_1, team_2, loc, AdjEM_Z, AdjO_Z, AdjD_Z, AdjT_Z, AdjEM_SOS_Z, 
+          dummy_outcome = 1)
+  df_model <- df %>% select(loc, AdjEM_Z, AdjO_Z, AdjD_Z, AdjT_Z, AdjEM_SOS_Z, 
            Wor_Z, Wdr_Z, efg_Z, three_pt_Z, to_perc_Z, ft_perc_Z, dummy_outcome)
-  df_model <- df %>%
-    select(-id, -Season, -team_1, -team_2)
+  df_model_d <- df %>% select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+           Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D, dummy_outcome)
   df_keep <- df %>%
     select(id, Season, team_1, team_2)
-  head(df_model)
+  ## Create Model Files for XGB
+  
   sparseDF <- sparse.model.matrix(dummy_outcome~.-1, data=df_model)
   sparseDF <- xgb.DMatrix(data = sparseDF, label = df_model$dummy_outcome)
-  df_preds <- predict(xgbD, sparseDF)
-  df_preds_logs <- predict(logmodel, df_model, type = 'response')
-  df_final_ens <- as.data.frame(cbind(df_preds, df_preds_logs)) %>%
-    mutate(pred_ens = (df_preds + df_preds_logs) / 2)
-  df_final <- as.data.frame(cbind(df_keep, cbind(df_final_ens$pred_ens, cbind(df_preds, df_preds_logs))))
+  sparseDFD <- sparse.model.matrix(dummy_outcome~.-1, data=df_model_d)
+  sparseDFD <- xgb.DMatrix(data = sparseDFD, label = df_model_d$dummy_outcome)
+  
+  ## Generate preds
+  
+  xgb_preds <- predict(xgbD, sparseDF)
+  xgbD_preds <- predict(xgbDD, sparseDFD)
+  log_preds <- predict(logmodel, df_model, type = 'response')
+  
+  ## Simple Ens 
+  
+  simpEns <- (xgb_preds + xgbD_preds + log_preds) / 3
+  
+  ## XGB + Log Ens
+  
+  dummy_outcome <- rep(1, nrow(df_model))
+  ens <- as.data.frame(cbind(xgb_preds, cbind(xgbD_preds, cbind(log_preds, dummy_outcome))))
+  sparseEns <- sparse.model.matrix(dummy_outcome~.-1, data=ens)
+  sparseEns <- xgb.DMatrix(data = sparseEns, label = ens$dummy_outcome)
+  
+  xgbLEns <- predict(xgbDEns, sparseEns)
+  
+  ## XGB Ens
+  
+  ensX <- as.data.frame(cbind(xgb_preds, cbind(xgbD_preds, dummy_outcome)))
+  sparseEnsX <- sparse.model.matrix(dummy_outcome~ .-1, data = ensX)
+  sparseEnsX <- xgb.DMatrix(data = sparseEnsX, label = ensX$dummy_outcome)
+  
+  xgbEns <- predict(xgbDEnsX, sparseEnsX)
+
+  
+  df_final <- as.data.frame(cbind(df_keep$id, cbind(xgb_preds, cbind(xgbD_preds, cbind(log_preds, cbind(simpEns, cbind(xgbLEns, xgbEns)))))))
   return(df_final)
 }
 
 sampleSubmission <- newPredsFormat(sampleSub)
-head(sampleSubmission)
-ensSub <- sampleSubmission %>%
-  select(id, V1)
-colnames(ensSub) <- c('id', 'pred')
-write.csv(ensSub, 'ensemble_v1.csv', row.names = F)
 
-logSub <- sampleSubmission %>%
-  select(id, df_preds_logs)
-colnames(logSub) <- c('id', 'pred')
-write.csv(logSub, 'log_v1.csv', row.names = F)
+## CREATE FUNCTION  To save to CSV File
 
-xgbSub <- sampleSubmission %>%
-  select(id, df_preds)
-colnames(xgbSub) <- c('id', 'pred')
-write.csv(xgbSub, 'xgb_v1.csv', row.names = F)
+csv_saver <- function(name, var) {
+  df <- sampleSubmission[,c(1,var)]
+  colnames(df) <- c('id', 'pred')
+  write.csv(df, paste0(name,'.csv'), row.names = F)
+}
 
-filter(df_final, team_1 == 1246)
-filter(df_final_2, team_1 == 1246)
-filter(df_final, team_2 == 1246)
-filter(df_final_2, team_2 == 1246)
-sum(df_final$df_preds)
-library(DescTools)
-options(scipen = 999)
+## Save different variations of predictions
+
+csv_saver('xgb_z', 2)
+csv_saver('xgb_d', 3)
+csv_saver('log', 4)
+csv_saver('simpleEns', 5)
+csv_saver('xgbLEns', 6)
+csv_saver('xgbEns', 7)
+
+
