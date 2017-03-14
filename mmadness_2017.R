@@ -3,19 +3,62 @@ setwd('~/Documents/Kaggle/MarchMadness/2017/Modeling_Data/March_Madness_2017')
 library(data.table)
 
 ## Read in core information about tourney & regular season games
-
+head(regSeasonComp)
+head(regSeasonComp2017)
 regSeasonComp <- fread('regularSeasonCompactResults.csv', header = T, stringsAsFactors = F)
+regSeasonComp2017 <- fread('2017_Final_CompactResults.csv', header = T, stringsAsFactors = F)
+regSeasonComp <- as.data.frame(rbind(regSeasonComp, regSeasonComp2017))
 regSeasonComp$type <- 'Regular'
 tournComp <- fread('TourneyCompactResults.csv', header = T, stringsAsFactors = F)
 tournComp$type <- 'Tourney'
 gameStack <- as.data.frame(rbind(regSeasonComp, tournComp))
 
-## Read in stacked data - stacked manually in excel from detailed data provided by Kaggle
+## Automate stacking
 
-regSeasonStack <- fread('regSeasonStack.csv', header = T, stringsAsFactors = F)
-regSeasonStack$type <- 'Regular'
-tourneyStack <- fread('tourneyStack.csv', header = T, stringsAsFactors = F)
-tourneyStack$type <- 'Tourney'
+regSeasonS <- fread('RegularSeasonDetailedResults.csv', header = T, stringsAsFactors = F)
+regSeasonDet2017 <- fread('2017_Final_DetailedResults.csv', header = T, stringsAsFactors = F)
+regSeasonS <- as.data.frame(rbind(regSeasonS, regSeasonDet2017))
+tourneyS <- fread('TourneyDetailedResults.csv', header = T, stringsAsFactors = F)
+
+## Create winner and loser datasets
+
+regSeasonW <- regSeasonS %>%
+  mutate(Outcome = 'Win',
+         type = 'Regular') %>%
+  select(Season, Daynum, Outcome, Wteam, Wscore, Wloc, Numot, Wfgm, Wfga, Wfgm3, Wfga3,
+         Wftm, Wfta, Wor, Wdr, Wast, Wto, Wstl, Wblk, Wpf, type)
+
+regSeasonL <- regSeasonS %>%
+  mutate(Outcome = 'Loss',
+         type = 'Regular',
+         Wloc = ifelse(Wloc == 'N', 'N', ifelse(Wloc == 'A', 'H', 'A'))) %>%
+  select(Season, Daynum, Outcome, Lteam, Lscore, Wloc, Numot, Lfgm, Lfga, Lfgm3, Lfga3,
+         Lftm, Lfta, Lor, Ldr, Last, Lto, Lstl, Lblk, Lpf, type)
+
+tourneyW <- tourneyS %>%
+  mutate(Outcome = 'Win',
+         type = 'Tourney') %>%
+  select(Season, Daynum, Outcome, Wteam, Wscore, Wloc, Numot, Wfgm, Wfga, Wfgm3, Wfga3,
+         Wftm, Wfta, Wor, Wdr, Wast, Wto, Wstl, Wblk, Wpf, type)  
+
+tourneyL <- tourneyS %>%
+  mutate(Outcome = 'Loss',
+         type = 'Tourney') %>%
+  select(Season, Daynum, Outcome, Wteam, Wscore, Wloc, Numot, Wfgm, Wfga, Wfgm3, Wfga3,
+         Wftm, Wfta, Wor, Wdr, Wast, Wto, Wstl, Wblk, Wpf, type)  
+
+colnames(regSeasonL) <- c('Season', 'Daynum', 'Outcome', 'Wteam', 'Wscore', 'Wloc', 
+                          'Numot', 'Wfgm', 'Wfga', 'Wfgm3', 'Wfga3',
+                          'Wftm', 'Wfta', 'Wor', 'Wdr', 'Wast', 'Wto', 
+                          'Wstl', 'Wblk', 'Wpf', 'type')
+
+colnames(tourneyL) <- c('Season', 'Daynum', 'Outcome', 'Wteam', 'Wscore', 'Wloc', 
+                          'Numot', 'Wfgm', 'Wfga', 'Wfgm3', 'Wfga3',
+                          'Wftm', 'Wfta', 'Wor', 'Wdr', 'Wast', 'Wto', 
+                          'Wstl', 'Wblk', 'Wpf', 'type')
+
+regSeasonStack <- as.data.frame(rbind(regSeasonW, regSeasonL))
+tourneyStack <- as.data.frame(rbind(tourneyW, tourneyL))
 
 ## Read in KenPom data
 
@@ -109,11 +152,13 @@ seasonGamesL <- seasonGames %>%
          to_perc_D = to_perc_L - to_perc_W,
          ft_perc_D = ft_perc_L - ft_perc_W,
          outcome = 0) %>%
-  select(Season, game_id, Wteam, Lteam, team_name_w, team_name_l, Wscore, Lscore, Wloc, type,
+  select(Season, game_id, Wteam, Lteam, team_name_w, team_name_l, Wscore, Lscore, 
+         Wloc, type,
          AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, Wor_D, Wdr_D, efg_D,
          three_pt_D, to_perc_D, ft_perc_D, outcome)
 colnames(seasonGamesL) <- c('Season', 'game_id', 'team_1', 'team_2', 'team_name_1', 'team_name_2',
-                            'score_1', 'score_2', 'loc', 'type', 'AdjEM_D', 'AdjO_D', 'AdjD_D',
+                            'score_1', 'score_2', 'loc', 'type', 
+                            'AdjEM_D', 'AdjO_D', 'AdjD_D',
                             'AdjT_D', 'AdjEM_SOS_D', 'Wor_D', 'Wdr_D', 'efg_D',
                             'three_pt_D', 'to_perc_D', 'ft_perc_D', 'outcome')
 
@@ -364,11 +409,10 @@ dtrainD <- xgb.DMatrix(data = sparseTrainD, label = outcomeTrain)
 dtestD <- xgb.DMatrix(data = sparseTestD, label = outcomeTest)
 dTtestD <- xgb.DMatrix(data = sparseTTestD, label = outcomeTourney)
 
-
 xgbDD <- xgboost(data = dtrainD,
                 eta = 0.045,
                 max_depth = 6, 
-                nround=250, 
+                nround=500, 
                 subsample = 0.5,
                 colsample_bytree = 0.5,
                 eval.metric = "error",
@@ -379,6 +423,10 @@ xgbDD <- xgboost(data = dtrainD,
                 watchlist = watchlist
 )
 
+importanceD <- xgb.importance(feature_names = colnames(sparseTrainD), model = xgbDD)
+
+importanceD
+
 ## Create predictions
 
 predsTrainD <- predict(xgbDD, dtrainD)
@@ -386,6 +434,8 @@ predsTestD <- predict(xgbDD, dtestD)
 predsTournD <- predict(xgbDD, dTtestD)
 
 errorfunc(predsTestD, outcomeTest)
+LogLoss(predsTestD, outcomeTest)
+errorfunc(predsTournD, outcomeTourney)
 LogLoss(predsTournD, outcomeTourney)
 
 
@@ -494,8 +544,8 @@ ensTournX <- predict(xgbDEnsX, dtournEnsX)
 errorfunc(ensTestX, outcomeTest)
 LogLoss(ensTestX, outcomeTest)
 
-errorfunc(ensTourn, outcomeTourney)
-LogLoss(ensTourn, outcomeTourney)
+errorfunc(ensTournX, outcomeTourney)
+LogLoss(ensTournX, outcomeTourney)
 
 ## New Data Predictions
 
@@ -503,9 +553,15 @@ LogLoss(ensTourn, outcomeTourney)
 
 library(splitstackshape)
 
-sampleSub <- fread('sample_submission.csv', stringsAsFactors = F)
-sampleSub <- cSplit(sampleSub, 'id', sep = "_")
-sampleSub$pred <- NULL
+## For First Stage
+
+##sampleSub <- fread('sample_submission.csv', stringsAsFactors = F)
+
+## Second Stage
+
+sampleSub <- fread('SampleSubmission_5050Benchmark.csv', stringsAsFactors = F)
+sampleSub <- cSplit(sampleSub, 'Id', sep = "_")
+sampleSub$Pred <- NULL
 colnames(sampleSub) <- c('Season', 'team_1', 'team_2')
 
 newPredsFormat <- function(predsDF) {
@@ -607,11 +663,121 @@ csv_saver <- function(name, var) {
 
 ## Save different variations of predictions
 
-csv_saver('xgb_z', 2)
-csv_saver('xgb_d', 3)
-csv_saver('log', 4)
-csv_saver('simpleEns', 5)
-csv_saver('xgbLEns', 6)
-csv_saver('xgbEns', 7)
+csv_saver('xgb_z_2017', 2)
+csv_saver('xgb_d_2017', 3)
+csv_saver('log_2017', 4)
+csv_saver('simpleEns_2017', 5)
+csv_saver('xgbLEns_2017', 6)
+csv_saver('xgbEns_2017', 7)
+
+## Continuous Predictor
+
+modelRegTrainCont <- modelRegTrainFull %>%
+  mutate(score_diff = ifelse(outcome == 1, score_1 - score_2, score_2 - score_1))
+
+modelRegTestCont <- modelRegTestFull %>%
+  mutate(score_diff = ifelse(outcome == 1, score_1 - score_2, score_2 - score_1))
+
+modelTournCont <- modelTournFull %>%
+  mutate(score_diff = ifelse(outcome == 1, score_1 - score_2, score_2 - score_1))
+
+## Scores
+
+scoreTrain <- modelRegTrainCont$score_diff
+scoreTest <- modelRegTestCont$score_diff
+scoreTourney <- modelTournCont$score_diff
+
+## Model Files
+
+modelRegTrainCont_D <- modelRegTrainCont %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D)
+
+modelRegTestCont_D <- modelRegTestCont %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D)
+
+modelTournCont_D <- modelTournCont %>%
+  select(loc, AdjEM_D, AdjO_D, AdjD_D, AdjT_D, AdjEM_SOS_D, 
+         Wor_D, Wdr_D, efg_D, three_pt_D, to_perc_D, ft_perc_D)
+
+## Matrixing
+
+sparseTrainC <- sparse.model.matrix(scoreTrain  ~.-1 , data=modelRegTrainCont_D)
+sparseTestC <- sparse.model.matrix(scoreTest  ~.-1 , data=modelRegTestCont_D)
+sparseTournC <- sparse.model.matrix(scoreTourney  ~.-1 , data=modelTournCont_D)
+dtrainC <- xgb.DMatrix(data = sparseTrainC, label = scoreTrain)
+dtestC <- xgb.DMatrix(data = sparseTestC, label = scoreTest)
+dtournC <- xgb.DMatrix(data = sparseTournC, label = scoreTourney)
+
+## Model
+
+xgbDC <- xgboost(data = dtrainC,
+                    eta = 0.01,
+                    max_depth = 3, 
+                    nround=500, 
+                    subsample = 0.5,
+                    colsample_bytree = 0.5,
+                    eval_metric = "rmse",
+                    objective = "reg:linear",
+                    nthread = 3,
+                    watchlist = watchlist
+)
+  
+importanceC <- xgb.importance(feature_names = colnames(sparseTrainC), model = xgbDC)
+importanceC
+
+cPredTest <- predict(xgbDC, dtestC)
+cPredTourn <- predict(xgbDC, dtournC)
+
+cPredFin <- as.data.frame(cbind(cPredTest, modelRegTestCont)) %>%
+  mutate(miss = ceiling(scoreTest - cPredTest),
+         score_diff = ifelse(outcome == 1, score_1 - score_2, score_2 - score_1),
+         wrong = ifelse(sign(scoreTest) == sign(cPredTest), 0, 1)) %>%
+  select(Season, score_1, score_2, team_name_1, team_name_2, AdjEM_D, cPredTest, score_diff, miss, wrong) %>%
+  arrange(miss)
+
+head(cPredFin)
+tail(cPredFin)
+Desc(cPredFin$wrong)
+
+cPredTournFin <- as.data.frame(cbind(cPredTourn, modelTournCont)) %>%
+  mutate(miss = ceiling(scoreTourney - cPredTourn),
+         score_diff = ifelse(outcome == 1, score_1 - score_2, score_2 - score_1),
+         wrong = ifelse(sign(scoreTourney) == sign(cPredTourn), 0, 1)) %>%
+  select(Season, score_1, score_2, team_name_1, team_name_2, AdjEM_D, cPredTourn, score_diff, miss, wrong) %>%
+  arrange(miss)
+
+rmse <- function(actual, predict) {
+  rmse <- sqrt(mean((predict -actual)^2))
+  print(paste0('RMSE is: ',rmse))
+}
+
+rmse(cPredTournFin$cPredTourn, cPredTournFin$score_diff)
+cor(cPredTournFin$cPredTourn, cPredTournFin$score_diff)
+sd(cPredTournFin$miss)
+
+tight_games <- filter(cPredTournFin, cPredTourn < 10 & cPredTourn > -10)
+sd(tight_games$miss)
+cor(tight_games$cPredTourn, tight_games$score_diff)
+rmse(tight_games$cPredTourn, tight_games$score_diff)
+Desc(tight_games$wrong)
+Desc(tight_games$miss)
 
 
+
+library(ggplot2)
+deviation_plot <- function(df) {
+  ggplot(data=df, aes(x = miss)) +
+    geom_histogram(binwidth=2, colour="black", 
+                   aes(y=..density.., fill=..count..)) +
+    geom_vline(xintercept = mean(df[,'miss']) + (sd(df[,'miss']))) +
+    geom_vline(xintercept = mean(df[,'miss']) - (sd(df[,'miss']))) +
+    geom_vline(xintercept = mean(df[,'miss']) + (sd(df[,'miss']) * 2)) +
+    geom_vline(xintercept = mean(df[,'miss']) - (sd(df[,'miss']) * 2))
+}
+
+deviation_plot(cPredTournFin)
+deviation_plot(cPredFin)
+
+       

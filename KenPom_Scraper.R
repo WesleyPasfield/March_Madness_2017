@@ -89,6 +89,7 @@ kenpom_scrape <- function( year_start, year_end, location ) {
 
 ## Run function to save file at desired location
 
-kenpom_All <- kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017')
+kenpom_All <- kenpom_scrape(2002, 2017, '~/Documents/Kaggle/MarchMadness/2017/Modeling_Data/March_Madness_2017')
 head(kenpom_All)
+tail(kenpom_All)
 
